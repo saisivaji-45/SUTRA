@@ -325,7 +325,7 @@ def fallback_answer(query, context, memories):
         return "I don't have enough local evidence yet. Upload the relevant document or add the fact to Memory Vault."
     snippets = []
     for item in context[:3]:
-        snippets.append(item["text"][:350])
+        snippets.append(item["text"][:1200])
     answer = "Based on your local indexed data, the most relevant evidence is:\n\n" + "\n\n".join(f"• {s}" for s in snippets)
     if memories:
         answer += "\n\nMemory currently available to SUTRA: " + "; ".join(m["content"] for m in memories[:3])
