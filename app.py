@@ -322,6 +322,142 @@ def call_ollama(prompt: str, system: str):
 
 def fallback_answer(query, context, memories):
     if not context:
+        return (
+            "I couldn't find relevant information in your indexed documents. "
+            "Try uploading the document containing the answer."
+        )
+
+    q = query.lower().strip()
+
+    # ---------------------------------------------------------
+    # 1. TIMETABLE QUESTIONS
+    # ---------------------------------------------------------
+
+    days = [
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+        "sunday",
+    ]
+
+    detected_day = next((day for day in days if day in q), None)
+
+    timetable_words = [
+        "class",
+        "lecture",
+        "timetable",
+        "schedule",
+        "period",
+        "subject",
+        "today",
+        "tomorrow",
+        "next class",
+    ]
+
+    is_timetable_question = (
+        detected_day is not None
+        or any(word in q for word in timetable_words)
+    )
+
+    if is_timetable_question:
+        full_text = "\n".join(item["text"] for item in context)
+
+        # Find the requested day inside the OCR text
+        if detected_day:
+            pattern = rf"{detected_day}\s+(.*?)(?=\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|$)"
+            match = re.search(pattern, full_text, re.IGNORECASE)
+
+            if match:
+                day_text = match.group(1).strip()
+
+                return (
+                    f"**{detected_day.title()} timetable:**\n\n"
+                    f"{day_text}\n\n"
+                    f"*[Source: {context[0]['document_name']}]*"
+                )
+
+        # Generic timetable question
+        return (
+            "**I found timetable information in your indexed document.**\n\n"
+            f"{full_text[:3000]}\n\n"
+            f"*[Source: {context[0]['document_name']}]*"
+        )
+
+    # ---------------------------------------------------------
+    # 2. FIND QUESTIONS
+    # ---------------------------------------------------------
+
+    question_patterns = [
+        ("when", "time"),
+        ("where", "location"),
+        ("which room", "room"),
+        ("what subject", "subject"),
+        ("which subject", "subject"),
+        ("who", "person"),
+        ("deadline", "deadline"),
+        ("due", "deadline"),
+    ]
+
+    detected_type = None
+
+    for words, answer_type in question_patterns:
+        if words in q:
+            detected_type = answer_type
+            break
+
+    # ---------------------------------------------------------
+    # 3. NORMAL DOCUMENT QUESTIONS
+    # ---------------------------------------------------------
+
+    best_chunks = []
+
+    query_words = set(
+        re.findall(r"\b[a-zA-Z0-9]{3,}\b", q)
+    )
+
+    for item in context:
+        text = item["text"]
+
+        text_words = set(
+            re.findall(r"\b[a-zA-Z0-9]{3,}\b", text.lower())
+        )
+
+        overlap = len(query_words & text_words)
+
+        best_chunks.append(
+            (overlap, text, item["document_name"])
+        )
+
+    best_chunks.sort(reverse=True, key=lambda x: x[0])
+
+    selected = best_chunks[:3]
+
+    answer_parts = []
+
+    for _, text, document_name in selected:
+        answer_parts.append(
+            f"**From {document_name}:**\n{text}"
+        )
+
+    answer = (
+        "### Relevant information\n\n"
+        + "\n\n".join(answer_parts)
+    )
+
+    if memories:
+        answer += (
+            "\n\n### Relevant memory\n\n"
+            + "\n".join(
+                f"- {m['content']}"
+                for m in memories[:3]
+            )
+        )
+
+    return answer
+    if not context:
         return "I don't have enough local evidence yet. Upload the relevant document or add the fact to Memory Vault."
     snippets = []
     for item in context[:3]:
