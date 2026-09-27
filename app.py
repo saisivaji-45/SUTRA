@@ -138,10 +138,25 @@ def extract_docx(file_bytes: bytes):
 def extract_image(data: bytes):
     image = Image.open(io.BytesIO(data))
     image = ImageOps.exif_transpose(image)
+
+    # Make small timetable text easier for OCR
     image = image.convert("L")
     image = ImageOps.autocontrast(image)
 
-    text = pytesseract.image_to_string(image)
+    # Upscale
+    image = image.resize(
+        (image.width * 3, image.height * 3),
+        Image.Resampling.LANCZOS
+    )
+
+    # Improve text/background separation
+    image = image.point(lambda p: 0 if p < 180 else 255)
+
+    # OCR
+    text = pytesseract.image_to_string(
+        image,
+        config="--psm 6"
+    )
 
     return [(None, text)]
 
